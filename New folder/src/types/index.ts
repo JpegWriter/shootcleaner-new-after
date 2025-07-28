@@ -76,6 +76,11 @@ export interface ImportSettings {
   hdMaxSize: number
   jpegQuality: number
   previewQuality: number
+  includeSubfolders: boolean
+  fileTypes: ('RAW' | 'JPEG' | 'PNG' | 'TIFF')[]
+  backupOriginals: boolean
+  generatePreviews: boolean
+  sessionType: 'wedding' | 'portrait' | 'landscape' | 'event' | 'other'
 }
 
 export interface UserProfile {
@@ -100,14 +105,6 @@ export interface Album {
   updatedAt: string
   importSettings?: ImportSettings
   cullingStats?: CullingStats;
-}
-
-export interface ImportSettings {
-  includeSubfolders: boolean;
-  fileTypes: ('RAW' | 'JPEG' | 'PNG' | 'TIFF')[];
-  backupOriginals: boolean;
-  generatePreviews: boolean;
-  sessionType: 'wedding' | 'portrait' | 'landscape' | 'event' | 'other';
 }
 
 export interface CullingStats {
@@ -242,6 +239,27 @@ export interface ElectronAPI {
   processImageMagick: (params: { inputPath: string, outputPath: string, commands: any[] }) => Promise<any>;
   batchProcessImages: (params: { images: any[], settings: any }) => Promise<any>;
   downloadFile: (filePath: string, filename: string) => Promise<void>;
+  
+  // Sharp.js processing
+  initializeSharp: (config: { memory: number; files: number; concurrency: number }) => Promise<void>;
+  createSessionCache: (sessionId: string) => Promise<string>;
+  extractExif: (filePath: string) => Promise<ExifData>;
+  processImageFile: (filePath: string, settings: ImportSettings) => Promise<ProcessedImage>;
+  cleanupSession: (sessionId: string) => Promise<void>;
+}
+
+export interface ExifData {
+  camera: string;
+  lens: string;
+  iso: number;
+  aperture: string;
+  shutter: string;
+  focal: string;
+  date: string;
+  width: number;
+  height: number;
+  colorSpace: string;
+  whiteBalance: string;
 }
 
 // Extend Window interface for Electron APIs

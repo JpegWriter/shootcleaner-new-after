@@ -50,6 +50,7 @@ export interface ImageAnalysisResult {
   decision: 'keep' | 'reject' | 'review'
   confidence: number
   rationale: string
+  timestamp: string
   styleNotes?: string
   similarTo?: string[]
   technicalIssues?: string[]
@@ -170,11 +171,11 @@ export async function analyzeBatch(
     })
 
     // Wait for completion
-    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id)
+    let runStatus = await openai.beta.threads.runs.retrieve(run.id, { thread_id: thread.id })
     
     while (runStatus.status === 'queued' || runStatus.status === 'in_progress') {
       await new Promise(resolve => setTimeout(resolve, 1000))
-      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id)
+      runStatus = await openai.beta.threads.runs.retrieve(run.id, { thread_id: thread.id })
       console.log(`Analysis status: ${runStatus.status}`)
     }
 
@@ -249,6 +250,7 @@ function createMockResults(images: ImageInput[], sessionId: string): VisionAnaly
         : decision === 'reject'
         ? 'Technical issues with exposure and focus. Not suitable for portfolio.'
         : 'Good potential but needs review. Minor technical adjustments needed.',
+      timestamp: new Date().toISOString(),
       artisticScore,
       badges: badges.slice(0, Math.floor(Math.random() * 3) + 2),
       technicalIssues: decision === 'reject' ? issues.slice(0, Math.floor(Math.random() * 2) + 1) : [],
@@ -258,8 +260,7 @@ function createMockResults(images: ImageInput[], sessionId: string): VisionAnaly
           parameters: { brightness: 5, contrast: 10, sharpness: 3 },
           description: 'Subtle enhancement to bring out details'
         }
-      ] : [],
-      timestamp: new Date().toISOString()
+      ] : []
     }
   })
 

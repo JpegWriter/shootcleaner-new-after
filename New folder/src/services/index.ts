@@ -4,6 +4,16 @@
 export * from './visionPipeline'
 export * from './imageProcessor'
 
+// Re-export types for easy access
+export type {
+  ProcessedImage,
+  ImportSettings,
+  ImportProgress,
+  ExifData,
+  EnhancementSettings,
+  ImageAnalysisResult
+} from '../types'
+
 // Service instances for easy access
 export { imageProcessor } from './imageProcessor'
 

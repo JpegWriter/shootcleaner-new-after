@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShootCleaner Debug</title>
+    <style>
+        body {
+            background-color: #181a1b;
+            color: white;
+            font-family: Inter, Arial, sans-serif;
+            padding: 40px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            color: #2176FF;
+            font-size: 36px;
+            margin-bottom: 30px;
+        }
+        .status {
+            background-color: #2a2a2a;
+            padding: 30px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+        .success {
+            color: #19c9c2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ShootCleaner Premium - Debug Mode</h1>
+        
+        <div class="status">
+            <h2 class="success">✅ Static HTML Working!</h2>
+            <p>If you can see this, the basic setup is working.</p>
+            <p>The issue is with the React development server.</p>
+        </div>
+
+        <div class="status">
+            <h3>Next Steps:</h3>
+            <ul style="text-align: left; max-width: 400px; margin: 0 auto;">
+                <li>Start dev server manually in terminal</li>
+                <li>Check for port conflicts</li>
+                <li>Verify React app is loading</li>
+            </ul>
+        </div>
+
+        <div class="status">
+            <p style="font-size: 12px; color: #888;">
+                Time: <span id="time"></span>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('time').textContent = new Date().toLocaleString();
+        console.log('Debug HTML loaded successfully!');
+    </script>
+</body>
+</html>

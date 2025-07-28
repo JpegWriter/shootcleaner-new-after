@@ -20,9 +20,14 @@ export default function RAWImport() {
   const [progress, setProgress] = useState<ImportProgress | null>(null)
   const [settings, setSettings] = useState<ImportSettings>({
     previewMaxSize: 800,
-    hdMaxSize: 2400,  
+    hdMaxSize: 2400,
     jpegQuality: 90,
-    previewQuality: 85
+    previewQuality: 85,
+    includeSubfolders: false,
+    fileTypes: ['RAW', 'JPEG', 'PNG', 'TIFF'],
+    backupOriginals: true,
+    generatePreviews: true,
+    sessionType: 'other'
   })
   const [showSettings, setShowSettings] = useState(false)
   
@@ -404,16 +409,4 @@ export default function RAWImport() {
       )}
     </div>
   )
-}
-
-// Declare global interface for Electron APIs (if not already declared)
-declare global {
-  interface Window {
-    electronAPI?: {
-      showOpenDialog: (options: {
-        properties: string[]
-        filters: Array<{ name: string; extensions: string[] }>
-      }) => Promise<{ canceled: boolean; filePaths?: string[] }>
-    }
-  }
 }

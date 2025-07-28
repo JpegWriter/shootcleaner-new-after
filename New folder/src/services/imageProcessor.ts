@@ -1,15 +1,20 @@
-// ImageMagick Processing Service for ShootCleaner Premium
-// Handles image enhancement and batch processing
+// ShootCleaner Premium - Real Image Processing Service
+// Handles image enhancement and batch processing with Sharp.js
 
 import type { 
   ImageAnalysisResult, 
-  ImageMagickCommand, 
-  ProcessedImage, 
-  ImportSettings, 
-  ImportProgress,
   EnhancementSettings,
-  ProcessingResult
+  ProcessingResult,
+  ImportSettings,
+  ImportProgress,
+  ProcessedImage,
+  ExifData
 } from '../types'
+import { v4 as uuidv4 } from 'uuid'
+
+// Supported file formats
+const SUPPORTED_RAW_FORMATS = ['.cr2', '.nef', '.arw', '.raf', '.dng', '.crw', '.cr3', '.pef', '.orf', '.rw2', '.srw']
+const SUPPORTED_JPEG_FORMATS = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp']
 
 export interface EnhancementResult {
   success: boolean
@@ -20,52 +25,156 @@ export interface EnhancementResult {
   enhancementType: string
 }
 
-export interface ProcessedImage {
-  id: string
-  name: string
-  originalPath: string
-  previewPath: string
-  hdPath: string
-  isRaw: boolean
-  metadata: {
-    camera: string
-    lens: string
-    iso: number
-    aperture: string
-    shutter: string
-    focal: string
-    date: string
-    originalWidth: number
-    originalHeight: number
-    fileSize: string
-    format: string
-    colorSpace: string
-    whiteBalance: string
-  }
-}
-
-export interface ImportProgress {
-  overall: number
-  current: number
-  fileName: string
-  stage: string
-}
-
-export interface ImportSettings {
-  previewMaxSize: number
-  hdMaxSize: number
-  jpegQuality: number
-  previewQuality: number
-}
-
 export class ImageProcessor {
   private static instance: ImageProcessor
+  private sessionId: string | null = null
+  private cacheDir: string | null = null
+  private settings = {
+    previewMaxSize: 800,
+    hdMaxSize: 2400,
+    jpegQuality: 85,
+    previewQuality: 75
+  }
+  
+  private readonly defaultImportSettings: ImportSettings = {
+    previewMaxSize: 800,
+    hdMaxSize: 2400,
+    jpegQuality: 85,
+    previewQuality: 75,
+    includeSubfolders: false,
+    fileTypes: ['RAW', 'JPEG', 'PNG', 'TIFF'],
+    backupOriginals: true,
+    generatePreviews: true,
+    sessionType: 'other'
+  }
   
   static getInstance(): ImageProcessor {
     if (!ImageProcessor.instance) {
       ImageProcessor.instance = new ImageProcessor()
     }
     return ImageProcessor.instance
+  }
+
+  constructor() {
+    this.initializeSharp()
+  }
+
+  /**
+   * Initialize Sharp with optimal settings
+   */
+  private initializeSharp() {
+    if (typeof window !== 'undefined' && window.api?.initializeSharp) {
+      // Configure Sharp through Electron API for better performance
+      window.api.initializeSharp({
+        memory: 50, // 50MB cache limit
+        files: 20,  // 20 file cache limit
+        concurrency: 2 // Limit concurrent operations
+      })
+    }
+  }
+
+  /**
+   * Initialize processing session with cache directory
+   */
+  async initializeSession(): Promise<string> {
+    this.sessionId = uuidv4()
+    
+    if (typeof window !== 'undefined' && window.api?.createSessionCache) {
+      try {
+        this.cacheDir = await window.api.createSessionCache(this.sessionId)
+        console.log(`Initialized session cache: ${this.cacheDir}`)
+        return this.sessionId
+      } catch (error) {
+        console.error('Failed to create session cache:', error)
+        throw error
+      }
+    } else {
+      // Browser fallback
+      this.cacheDir = `/temp/ShootCleanerCache/${this.sessionId}`
+      return this.sessionId
+    }
+  }
+
+  /**
+   * Update processing settings
+   */
+  updateSettings(newSettings: Partial<ImportSettings>) {
+    this.settings = { ...this.settings, ...newSettings }
+  }
+
+  /**
+   * Check if file format is supported
+   */
+  isSupportedFormat(filePath: string): boolean {
+    const ext = this.getFileExtension(filePath)
+    return [...SUPPORTED_RAW_FORMATS, ...SUPPORTED_JPEG_FORMATS].includes(ext)
+  }
+
+  /**
+   * Check if file is RAW format
+   */
+  isRawFormat(filePath: string): boolean {
+    const ext = this.getFileExtension(filePath)
+    return SUPPORTED_RAW_FORMATS.includes(ext)
+  }
+
+  /**
+   * Get file extension in lowercase
+   */
+  private getFileExtension(filePath: string): string {
+    return '.' + filePath.toLowerCase().split('.').pop()
+  }
+
+  /**
+   * Extract EXIF data from image
+   */
+  async extractExifData(filePath: string): Promise<ExifData> {
+    try {
+      if (typeof window !== 'undefined' && window.api?.extractExif) {
+        return await window.api.extractExif(filePath)
+      } else {
+        // Browser fallback - return mock EXIF data
+        return {
+          camera: 'Canon EOS R5',
+          lens: 'RF 24-70mm f/2.8L IS USM',
+          iso: 400,
+          aperture: 'f/2.8',
+          shutter: '1/250s',
+          focal: '50mm',
+          date: new Date().toISOString(),
+          width: 8192,
+          height: 5464,
+          colorSpace: 'sRGB',
+          whiteBalance: 'Auto'
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to extract EXIF from ${filePath}:`, error)
+      // Return default EXIF data on error
+      return {
+        camera: 'Unknown',
+        lens: 'Unknown', 
+        iso: 0,
+        aperture: 'Unknown',
+        shutter: 'Unknown',
+        focal: 'Unknown',
+        date: new Date().toISOString(),
+        width: 0,
+        height: 0,
+        colorSpace: 'Unknown',
+        whiteBalance: 'Unknown'
+      }
+    }
+  }
+
+  /**
+   * Format shutter speed for display
+   */
+  formatShutterSpeed(exposureTime: number): string {
+    if (!exposureTime) return 'Unknown'
+    if (exposureTime >= 1) return `${exposureTime}s`
+    const fraction = Math.round(1 / exposureTime)
+    return `1/${fraction}s`
   }
 
   /**
@@ -269,46 +378,117 @@ export class ImageProcessor {
   /**
    * Process a single image file (RAW or standard format)
    */
-  private async processImageFile(
+  async processImageFile(
     filePath: string, 
     settings: ImportSettings
   ): Promise<ProcessedImage> {
-    const fileName = filePath.split(/[\\/]/).pop() || ''
-    const isRaw = this.isRawFormat(fileName)
-    
-    // Mock processed image - in real app this would process via Electron
-    return {
-      id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: fileName,
-      originalPath: filePath,
-      previewPath: `${filePath}_preview.jpg`,
-      hdPath: `${filePath}_hd.jpg`,
-      isRaw,
-      metadata: {
-        camera: 'Canon EOS R5',
-        lens: 'RF 24-70mm f/2.8L IS USM',
-        iso: 400,
-        aperture: 'f/2.8',
-        shutter: '1/250s',
-        focal: '50mm',
-        date: new Date().toISOString(),
-        originalWidth: 8192,
-        originalHeight: 5464,
-        fileSize: '45.2MB',
-        format: isRaw ? 'CR2' : 'JPEG',
-        colorSpace: 'sRGB',
-        whiteBalance: 'Auto'
+    if (typeof window !== 'undefined' && window.api?.processImageFile) {
+      return await window.api.processImageFile(filePath, settings)
+    } else {
+      // Browser fallback with enhanced mock data
+      const fileName = filePath.split(/[\\/]/).pop() || ''
+      const isRaw = this.isRawFormat(fileName)
+      
+      return {
+        id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: fileName,
+        originalPath: filePath,
+        previewPath: `${filePath}_preview.jpg`,
+        hdPath: `${filePath}_hd.jpg`,
+        isRaw,
+        metadata: {
+          camera: 'Canon EOS R5',
+          lens: 'RF 24-70mm f/2.8L IS USM',
+          iso: 400,
+          aperture: 'f/2.8',
+          shutter: '1/250s',
+          focal: '50mm',
+          date: new Date().toISOString(),
+          originalWidth: 8192,
+          originalHeight: 5464,
+          fileSize: '45.2MB',
+          format: isRaw ? 'CR2' : 'JPEG',
+          colorSpace: 'sRGB',
+          whiteBalance: 'Auto'
+        }
       }
     }
   }
 
   /**
-   * Check if file is RAW format
+   * Process multiple images in batch with real Sharp.js processing
    */
-  private isRawFormat(filename: string): boolean {
-    const rawFormats = ['cr2', 'nef', 'arw', 'raf', 'dng', 'orf', 'rw2', 'pef', 'srw', '3fr', 'fff']
-    const extension = filename.toLowerCase().split('.').pop()
-    return extension ? rawFormats.includes(extension) : false
+  async processMultipleImages(
+    filePaths: string[], 
+    progressCallback?: (progress: ImportProgress) => void
+  ): Promise<{ results: ProcessedImage[], errors: string[] }> {
+    const results: ProcessedImage[] = []
+    const errors: string[] = []
+    
+    const startTime = Date.now()
+    console.log(`Starting batch processing of ${filePaths.length} images...`)
+    
+    for (let i = 0; i < filePaths.length; i++) {
+      const filePath = filePaths[i]
+      const fileName = filePath.split(/[\\/]/).pop() || ''
+      
+      if (progressCallback) {
+        progressCallback({
+          overall: Math.round((i / filePaths.length) * 100),
+          current: i + 1,
+          fileName,
+          stage: this.isRawFormat(fileName) ? 'Processing RAW...' : 'Processing JPEG...'
+        })
+      }
+      
+      try {
+        if (!this.isSupportedFormat(filePath)) {
+          throw new Error(`Unsupported format: ${fileName}`)
+        }
+        
+        const processed = await this.processImageFile(filePath, this.defaultImportSettings)
+        results.push(processed)
+      } catch (error) {
+        const errorMsg = `Failed to process ${fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error(errorMsg)
+        errors.push(errorMsg)
+      }
+    }
+
+    const totalTime = Date.now() - startTime
+    console.log(`Batch processing completed in ${totalTime}ms (${Math.round(totalTime/filePaths.length)}ms avg per image)`)
+
+    return { results, errors }
+  }
+
+  /**
+   * Clean up session cache
+   */
+  async cleanupSession(): Promise<void> {
+    if (this.sessionId && typeof window !== 'undefined' && window.api?.cleanupSession) {
+      try {
+        await window.api.cleanupSession(this.sessionId)
+        console.log(`Cleaned up session: ${this.sessionId}`)
+      } catch (error) {
+        console.error('Failed to cleanup session:', error)
+      }
+    }
+    this.sessionId = null
+    this.cacheDir = null
+  }
+
+  /**
+   * Get current cache directory
+   */
+  getCacheDirectory(): string | null {
+    return this.cacheDir
+  }
+
+  /**
+   * Get current session ID
+   */
+  getSessionId(): string | null {
+    return this.sessionId
   }
 
   /**
@@ -410,108 +590,6 @@ export class ImageProcessor {
   }
 
   /**
-   * Generate ImageMagick commands for enhancement settings
-   */
-  private generateEnhancementCommands(settings: EnhancementSettings): ImageMagickCommand[] {
-    const commands: ImageMagickCommand[] = []
-
-    // Basic adjustments
-    if (settings.brightness !== 0 || settings.contrast !== 0) {
-      commands.push({
-        operation: 'brightness-contrast',
-        params: [`${settings.brightness}x${settings.contrast}`]
-      })
-    }
-
-    if (settings.saturation !== 0) {
-      commands.push({
-        operation: 'modulate',
-        params: [`100,${100 + settings.saturation},100`]
-      })
-    }
-
-    // Exposure adjustment
-    if (settings.exposure !== 0) {
-      const exposureValue = Math.pow(2, settings.exposure)
-      commands.push({
-        operation: 'evaluate',
-        params: ['multiply', exposureValue.toString()]
-      })
-    }
-
-    // Highlight/Shadow recovery
-    if (settings.highlights !== 0 || settings.shadows !== 0) {
-      commands.push({
-        operation: 'shadows-highlights',
-        params: [`${Math.abs(settings.shadows)}x${Math.abs(settings.highlights)}`]
-      })
-    }
-
-    // Color temperature and tint
-    if (settings.temperature !== 0 || settings.tint !== 0) {
-      commands.push({
-        operation: 'color-matrix',
-        params: [this.generateColorMatrix(settings.temperature, settings.tint)]
-      })
-    }
-
-    // Sharpening
-    if (settings.sharpening > 0) {
-      const radius = settings.sharpening / 100 * 2
-      commands.push({
-        operation: 'unsharp',
-        params: [`${radius}x1+${settings.sharpening / 100}+0`]
-      })
-    }
-
-    // Noise reduction
-    if (settings.noiseReduction > 0) {
-      commands.push({
-        operation: 'despeckle'
-      })
-    }
-
-    // Resize if requested
-    if (settings.resize) {
-      const geometry = settings.maintainAspectRatio 
-        ? `${settings.width}x${settings.height}>`
-        : `${settings.width}x${settings.height}!`
-      
-      commands.push({
-        operation: 'resize',
-        params: [geometry]
-      })
-    }
-
-    // Output format and quality
-    commands.push({
-      operation: 'format',
-      params: [settings.format.toUpperCase()]
-    })
-
-    if (settings.format === 'jpeg') {
-      commands.push({
-        operation: 'quality',
-        params: [settings.quality.toString()]
-      })
-    }
-
-    return commands
-  }
-
-  /**
-   * Generate color matrix for temperature/tint adjustments
-   */
-  private generateColorMatrix(temperature: number, tint: number): string {
-    // Simplified color matrix generation
-    // In a real implementation, this would be more sophisticated
-    const tempFactor = 1 + (temperature / 100) * 0.1
-    const tintFactor = 1 + (tint / 100) * 0.05
-    
-    return `${tempFactor} 0 0 0 ${tintFactor} 0 1 0 0 0 0 0 1`
-  }
-
-  /**
    * Generate output filename for enhanced images
    */
   private generateOutputFileName(originalName: string, operation: string, step: number): string {
@@ -566,6 +644,11 @@ declare global {
       importImages: (filePaths: string[], settings: ImportSettings) => Promise<ProcessedImage[]>
       
       onImportProgress: (callback: (progress: ImportProgress) => void) => void
+
+      showOpenDialog: (options: {
+        properties: string[]
+        filters: Array<{ name: string; extensions: string[] }>
+      }) => Promise<{ canceled: boolean; filePaths?: string[] }>
     }
   }
 }
