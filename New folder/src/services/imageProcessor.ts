@@ -8,7 +8,9 @@ import type {
   ImportSettings,
   ImportProgress,
   ProcessedImage,
-  ExifData
+  ExifData,
+  ImageSession,
+  ImageData
 } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -491,6 +493,27 @@ export class ImageProcessor {
     return this.sessionId
   }
 
+  // Session management methods
+  async createSession(name: string): Promise<string> {
+    return SessionManager.createSession(name)
+  }
+
+  async getSession(sessionId: string): Promise<ImageSession | null> {
+    return SessionManager.getSession(sessionId)
+  }
+
+  async getAllSessions(): Promise<ImageSession[]> {
+    return SessionManager.getAllSessions()
+  }
+
+  async updateSession(sessionId: string, updates: Partial<ImageSession>): Promise<boolean> {
+    return SessionManager.updateSession(sessionId, updates)
+  }
+
+  async addImageToSession(sessionId: string, image: ImageData): Promise<boolean> {
+    return SessionManager.addImageToSession(sessionId, image)
+  }
+
   /**
    * Build ImageMagick command from enhancement command object
    */
@@ -645,10 +668,72 @@ declare global {
       
       onImportProgress: (callback: (progress: ImportProgress) => void) => void
 
+      createSessionCache?: (sessionId: string) => Promise<string>
+      enhanceImage?: (imagePath: string, settings: EnhancementSettings) => Promise<EnhancementResult>
+      batchProcessImages?: (options: any) => Promise<any>
+      processImageFile?: (filePath: string, settings: ImportSettings) => Promise<ProcessedImage>
+      cleanupSession?: (sessionId: string) => Promise<void>
+      extractExif?: (filePath: string) => Promise<ExifData>
+      initializeSharp?: (config: any) => void
+
       showOpenDialog: (options: {
-        properties: string[]
+        properties?: string[]
+        title?: string
+        buttonLabel?: string
         filters: Array<{ name: string; extensions: string[] }>
       }) => Promise<{ canceled: boolean; filePaths?: string[] }>
     }
+  }
+}
+
+// Session storage interface
+interface SessionStorage {
+  [sessionId: string]: ImageSession
+}
+
+class SessionManager {
+  private static sessionStorage: SessionStorage = {}
+
+  static createSession(name: string): string {
+    const sessionId = uuidv4()
+    const session: ImageSession = {
+      id: sessionId,
+      name,
+      images: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      status: 'active'
+    }
+    this.sessionStorage[sessionId] = session
+    return sessionId
+  }
+
+  static getSession(sessionId: string): ImageSession | null {
+    return this.sessionStorage[sessionId] || null
+  }
+
+  static getAllSessions(): ImageSession[] {
+    return Object.values(this.sessionStorage)
+  }
+
+  static updateSession(sessionId: string, updates: Partial<ImageSession>): boolean {
+    if (this.sessionStorage[sessionId]) {
+      this.sessionStorage[sessionId] = {
+        ...this.sessionStorage[sessionId],
+        ...updates,
+        updatedAt: new Date()
+      }
+      return true
+    }
+    return false
+  }
+
+  static addImageToSession(sessionId: string, image: ImageData): boolean {
+    if (this.sessionStorage[sessionId]) {
+      this.sessionStorage[sessionId].images.push(image)
+      this.sessionStorage[sessionId].updatedAt = new Date()
+      return true
+    }
+    return false
   }
 }

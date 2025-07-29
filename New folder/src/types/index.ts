@@ -200,7 +200,62 @@ export interface EnhancementSettings {
 }
 
 // Photo Session Management
-export type SessionStatus = 'active' | 'processing' | 'completed' | 'archived'
+export type SessionStatus = 'active' | 'processing' | 'completed' | 'archived' | 'importing' | 'imported' | 'culled'
+
+export interface ImageData {
+  id: string;
+  filename: string;
+  path: string;
+  size: number;
+  type: string;
+  dateAdded: Date;
+  exifData?: any;
+  thumbnail?: string;
+  hdPath?: string;
+  previewPath?: string;
+  status: 'importing' | 'imported' | 'selected' | 'culled' | 'accepted' | 'rejected';
+  rating: number;
+  tags: string[];
+  selected: boolean;
+  aiAnalysis?: {
+    image_id: string;
+    scores: {
+      sharpness: number;
+      eyes_open: boolean;
+      duplicates: string | null;
+      face_match: 'primary' | 'secondary' | 'none';
+      blurriness: boolean;
+      artistry: number;
+      style_match: number;
+      composition: number;
+      exposure: number;
+      color_harmony: number;
+    };
+    editInstructions: string[];
+    metadata: {
+      faces_detected: number;
+      dominant_colors: string[];
+      scene_type: string;
+      lighting: 'natural' | 'artificial' | 'mixed';
+      time_of_day: 'morning' | 'afternoon' | 'evening' | 'night' | 'unknown';
+    };
+    recommendations: {
+      keep: boolean;
+      priority: 'high' | 'medium' | 'low';
+      reasons: string[];
+      suggested_edits: string[];
+    };
+  };
+}
+
+export interface ImageSession {
+  id: string;
+  name: string;
+  images: ImageData[];
+  createdAt: Date;
+  updatedAt: Date;
+  status: SessionStatus;
+}
 
 export interface PhotoSession {
   id: string

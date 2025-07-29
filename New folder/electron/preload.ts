@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for ShootCleaner Premium
 const api = {
+  // Directory creation helper
+  ensureDirectories: (dirs: string[]) => ipcRenderer.invoke('fs:ensureDirectories', dirs),
   // App information
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   getName: () => ipcRenderer.invoke('app:getName'),
@@ -41,14 +42,11 @@ const api = {
 // Use `contextBridge` APIs to expose Electron APIs to renderer only if context isolation is enabled
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }
