@@ -1,44 +1,12 @@
-
-import { promises as fs } from 'fs';
-import { app, BrowserWindow, Menu, shell, ipcMain } from 'electron';
-import { join } from 'path';
-import * as path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { app, BrowserWindow, Menu, shell, ipcMain } from 'electron'
+import { join } from 'path'
+import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import * as fs from 'fs'
+import * as path from 'path'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
 const execAsync = promisify(exec)
-
-// Replace @electron-toolkit/utils with native implementations
-const is = {
-  dev: !app.isPackaged,
-  macOS: process.platform === 'darwin',
-  windows: process.platform === 'win32',
-  linux: process.platform === 'linux'
-}
-
-const electronApp = {
-  setAppUserModelId: (id: string) => {
-    if (is.windows) {
-      app.setAppUserModelId(id)
-    }
-  }
-}
-
-const optimizer = {
-  watchWindowShortcuts: (window: BrowserWindow) => {
-    // Basic window shortcuts implementation
-    if (is.dev) {
-      window.webContents.on('before-input-event', (event, input) => {
-        if (input.control && input.key === 'r') {
-          window.reload()
-        }
-        if (input.control && input.shift && input.key === 'I') {
-          window.webContents.toggleDevTools()
-        }
-      })
-    }
-  }
-}
 
 // Set up Electron security and development environment
 if (!app.requestSingleInstanceLock()) {
@@ -60,7 +28,7 @@ function createWindow(): void {
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#181a1b',
     webPreferences: {
-      preload: join(__dirname, is.dev ? '../preload.js' : './preload.js'),
+      preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true,
@@ -73,8 +41,10 @@ function createWindow(): void {
     if (mainWindow) {
       mainWindow.show()
       
-      // Always open dev tools for debugging
-      mainWindow.webContents.openDevTools()
+      // Focus on window creation
+      if (is.dev) {
+        mainWindow.webContents.openDevTools()
+      }
     }
   })
 
@@ -93,23 +63,9 @@ function createWindow(): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    // In production, main.js is in dist-electron/ but index.html is in dist/
     mainWindow.loadFile(join(__dirname, '../dist/index.html'))
   }
 }
-
-ipcMain.handle('fs:ensureDirectories', async (_event, dirs: string[]) => {
-// IPC handler for ensuring directories exist
-ipcMain.handle('fs:ensureDirectories', async (_event, dirs: string[]) => {
-  for (const dir of dirs) {
-    try {
-      await fs.access(dir);
-    } catch {
-      await fs.mkdir(dir, { recursive: true });
-    }
-  }
-  return true;
-});
 
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
@@ -204,13 +160,8 @@ ipcMain.handle('imagemagick:processImage', async (_, { inputPath, outputPath, co
     }
     
     // Check if output file was created
-    let outputExists = false;
-    try {
-      await fs.access(outputPath);
-      outputExists = true;
-    } catch {
-      outputExists = false;
-    }
+    const outputExists = fs.existsSync(outputPath)
+    
     return {
       success: outputExists,
       outputPath: outputExists ? outputPath : undefined,
@@ -233,16 +184,16 @@ ipcMain.handle('imagemagick:batchProcess', async (_, { images, settings }) => {
   for (const imageData of images) {
     try {
       // Create temporary input file
-      const tempDir = path.join(__dirname, '../temp');
-      try {
-        await fs.access(tempDir);
-      } catch {
-        await fs.mkdir(tempDir, { recursive: true });
+      const tempDir = path.join(__dirname, '../temp')
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
       }
-      const inputPath = path.join(tempDir, `input_${Date.now()}_${imageData.name}`);
-      const outputPath = path.join(tempDir, `output_${Date.now()}_${imageData.name}`);
+      
+      const inputPath = path.join(tempDir, `input_${Date.now()}_${imageData.name}`)
+      const outputPath = path.join(tempDir, `output_${Date.now()}_${imageData.name}`)
+      
       // Write buffer to temp file
-      await fs.writeFile(inputPath, Buffer.from(imageData.buffer));
+      fs.writeFileSync(inputPath, Buffer.from(imageData.buffer))
       
       // Generate commands from settings
       const commands = generateCommandsFromSettings(settings)
@@ -267,13 +218,7 @@ ipcMain.handle('imagemagick:batchProcess', async (_, { images, settings }) => {
             console.warn('ImageMagick warning:', stderr)
           }
           
-          let outputExists = false;
-          try {
-            await fs.access(outputPath);
-            outputExists = true;
-          } catch {
-            outputExists = false;
-          }
+          const outputExists = fs.existsSync(outputPath)
           resolve({
             success: outputExists,
             outputPath: outputExists ? outputPath : undefined,
@@ -287,9 +232,9 @@ ipcMain.handle('imagemagick:batchProcess', async (_, { images, settings }) => {
       results.push(result)
       
       // Clean up input file
-      try {
-        await fs.unlink(inputPath);
-      } catch {}
+      if (fs.existsSync(inputPath)) {
+        fs.unlinkSync(inputPath)
+      }
       
     } catch (error) {
       console.error('Batch processing error for', imageData.name, ':', error)
